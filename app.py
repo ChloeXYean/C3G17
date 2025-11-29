@@ -2,111 +2,106 @@ import streamlit as st
 import requests
 import folium
 from streamlit_folium import st_folium
-import random
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
+# ==================== PAGE CONFIG ====================
 st.set_page_config(page_title="KLCC Live PM2.5", layout="centered")
 st.title("KLCC Kuala Lumpur")
-st.markdown("### Real-time PM2.5 from Clarity Sensor")
+st.markdown("### Real-time PM2.5 Air Quality")
 
-# Config
-LOCATION_ID = 5893160
-API_KEY = "dc213ab59e72d5a2ad42b90957e9e531117bf633a774b6157751bae99dce8af6"
-HEADERS = {"X-API-Key": API_KEY, "accept": "application/json"}
+# KLCC coordinates (fallback)
+KLCC_LAT = 3.1579
+KLCC_LON = 101.7123
 
-@st.cache_data(ttl=60)  # Cache API call every 1 minute
-def get_klcc_pm25():
-    url = f"https://api.openaq.org/v3/locations/{LOCATION_ID}/latest"
+# OpenAQ endpoint
+API_URL = "https://api.openaq.org/v3/locations/5893160/latest"
+
+
+# ==================== API FETCH FUNCTION ====================
+def get_latest_pm25():
     try:
-        r = requests.get(url, headers=HEADERS, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        lat = data.get("location", {}).get("coordinates", {}).get("latitude", 3.1564)
-        lon = data.get("location", {}).get("coordinates", {}).get("longitude", 101.70981)
-        name = data.get("location", {}).get("name", "KLCC")
+        API_KEY = "dc213ab59e72d5a2ad42b90957e9e531117bf633a774b6157751bae99dce8af6" 
 
-        # Filter for PM2.5 (parameter ID 2)
-        for meas in data.get("results", []):
-            param = meas.get("parameter", {})
-            if param.get("id") == 2:
-                return {
-                    "pm25": round(meas["value"], 1),
-                    "lat": lat,
-                    "lon": lon,
-                    "updated": meas["date"]["utc"][:16].replace("T", " ") + " UTC",
-                    "location": name
-                }
-    except:
+        response = requests.get(
+            API_URL,
+            headers={"X-API-Key": API_KEY}  
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        record = data["results"][0]
+
+        return {
+            "pm25": record["value"],
+            "lat": record["coordinates"]["latitude"],
+            "lon": record["coordinates"]["longitude"],
+            "updated": record["datetime"]["local"],
+            "location": "KLCC"
+        }
+
+    except Exception as e:
+        st.error(f"Error fetching API: {e}")
         return None
 
-# Initialize session state for simulated data
-if 'last_simulated_update' not in st.session_state:
-    st.session_state.last_simulated_update = datetime.now(timezone.utc) - timedelta(minutes=1)  # Force initial generation
-if 'simulated_pm25' not in st.session_state:
-    st.session_state.simulated_pm25 = round(random.uniform(5, 50), 1)
 
-# Refresh button
+# ==================== REFRESH BUTTON ====================
 if st.button("🔄 Refresh Data", type="primary"):
     st.cache_data.clear()
-    st.session_state.last_simulated_update = datetime.now(timezone.utc) - timedelta(minutes=1)  # Force new random on refresh
     st.rerun()
 
-# Fetch & display
-with st.spinner("Fetching live KLCC data..."):
-    result = get_klcc_pm25()
 
-if result is not None:
-    pm25 = result["pm25"]
-    lat = result["lat"]
-    lon = result["lon"]
-    updated = result["updated"]
-    location = result["location"]
-else:
-    # Sensor offline: Generate random only every 1 minute
-    now = datetime.now(timezone.utc)
-    if now - st.session_state.last_simulated_update >= timedelta(minutes=1):
-        st.session_state.simulated_pm25 = round(random.uniform(5, 50), 1)
-        st.session_state.last_simulated_update = now
-    pm25 = st.session_state.simulated_pm25
-    lat = 3.1564
-    lon = 101.70981
-    updated = now.strftime("%Y-%m-%d %H:%M") + " UTC"
-    location = "KLCC (Clarity)"
+# ==================== FETCH DATA ====================
+with st.spinner("Fetching KLCC PM2.5..."):
+    result = get_latest_pm25()
 
-# AQI Status & Color
+# If API fails
+if result is None:
+    st.error("❌ No PM2.5 data available. API returned no results.")
+    st.stop()
+
+# Extract data
+pm25 = result["pm25"]
+lat = result["lat"]
+lon = result["lon"]
+updated_display = result["updated"]
+location = result["location"]
+
+# ==================== AQI COLOR ====================
 if pm25 <= 12:
-    color, status = "🟢", "Good"
+    color, status = "green", "Good"
 elif pm25 <= 35:
-    color, status = "🟡", "Moderate"
+    color, status = "yellow", "Moderate"
 elif pm25 <= 55:
-    color, status = "🟠", "Unhealthy for Sensitive Groups"
+    color, status = "orange", "Unhealthy for Sensitive Groups"
 elif pm25 <= 150:
-    color, status = "🔴", "Unhealthy"
+    color, status = "red", "Unhealthy"
 else:
-    color, status = "🟣", "Very Unhealthy"
+    color, status = "purple", "Very Unhealthy"
 
+# ==================== SIDEBAR INDICATOR ====================
+st.sidebar.success("🟢 Using REAL LIVE DATA from OpenAQ.")
+st.sidebar.info("Data: OpenAQ v3 API (Clarity Node-S)\nUpdated every 10–30 minutes.")
+
+# ==================== DISPLAY INFO ====================
 col1, col2 = st.columns([1, 2])
 
 with col1:
     st.metric("PM2.5", f"{pm25} µg/m³")
-    st.markdown(f"*{color} {status}*")
-    caption_text = f"Updated: {updated}\nLocation: {location}"
-    st.caption(caption_text)
+    st.markdown(f"**{status}**")
+    st.caption(f"Location: {location}\nUpdated: {updated_display}")
 
 with col2:
     m = folium.Map(location=[lat, lon], zoom_start=16, tiles="CartoDB positron")
     folium.CircleMarker(
         [lat, lon],
         radius=15,
-        popup=f"{location}<br>PM2.5: {pm25} µg/m³<br>Updated: {updated}",
+        popup=f"{location}<br>PM2.5: {pm25} µg/m³<br>Updated: {updated_display}",
         tooltip=f"{pm25} µg/m³",
         color="black",
         weight=3,
-        fillColor={"🟢": "green", "🟡": "yellow", "🟠": "orange", "🔴": "red", "🟣": "purple"}[color],
+        fillColor=color,
         fillOpacity=0.9
     ).add_to(m)
     st_folium(m, width=700, height=400)
 
-st.success("✓ Live data from Clarity sensor at KLCC!")
-
-st.sidebar.info("Data: OpenAQ v3 API + Clarity Movement\nSensor at Petronas Towers, KLCC.\nUpdates every 10-30 min.")
+st.success("✓ Page loaded successfully.")
