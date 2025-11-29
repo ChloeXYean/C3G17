@@ -63,7 +63,7 @@ def load_history():
 # ==================== FETCH PM2.5 ====================
 def get_latest_pm25():
     try:
-        API_KEY = "dc213ab59e72d5a2ad42b90957e9e531117bf633a774b6157751bae99dce8af6"
+        API_KEY = "3b430ccb642b4f2f5cdc905c93d20a42054ceef85c7f7fe9f9b74f7ba8a5ebd9"
         response = requests.get(API_URL, headers={"X-API-Key": API_KEY})
         response.raise_for_status()
         r = response.json()["results"][0]
@@ -196,11 +196,9 @@ with col2:
     ).add_to(m)
     st_folium(m, width=700, height=400)
 
-# ==================== WEATHER TABLE (UPDATED) ====================
+# ==================== WEATHER TABLE (EXACTLY LIKE app.py) ====================
 st.markdown("### Weather Snapshot")
-
-# 1. Create a Pandas DataFrame instead of a simple dictionary
-weather_df = pd.DataFrame({
+st.table({
     "Parameter": ["Description", "Temperature (°C)", "Humidity (%)", "Wind (m/s)", "Rain (mm)"],
     "Value": [
         weather['desc'],
@@ -210,9 +208,6 @@ weather_df = pd.DataFrame({
         f"{weather['rain']}"
     ]
 })
-
-# 2. Use st.dataframe with hide_index=True (Just like the history table)
-st.dataframe(weather_df, use_container_width=True, hide_index=True)
 
 # Weather impact explanation
 if explanation_text:
