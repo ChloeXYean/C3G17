@@ -3,8 +3,7 @@ import requests
 import folium
 from streamlit_folium import st_folium
 from datetime import datetime, timezone
-import pandas as pd
-import altair as alt
+
 # ==================== PAGE CONFIG ====================
 st.set_page_config(page_title="KLCC Live PM2.5", layout="centered")
 st.title("KLCC Kuala Lumpur")
@@ -79,16 +78,6 @@ elif pm25 <= 150:
 else:
     color, status = "purple", "Very Unhealthy"
 
-
-# ==================== HEALTH ADVICE ====================
-health_advice = {
-    "Good": "✅ Air quality is good. Enjoy outdoor activities.",
-    "Moderate": "⚠️ Sensitive groups should limit prolonged outdoor activity.",
-    "Unhealthy for Sensitive Groups": "🟠 Limit outdoor activity and consider wearing a mask.",
-    "Unhealthy": "🔴 Reduce outdoor exposure. Use masks if possible.",
-    "Very Unhealthy": "🟣 Stay indoors. Avoid outdoor exercise."
-}
-
 # ==================== SIDEBAR INDICATOR ====================
 st.sidebar.success("🟢 Using REAL LIVE DATA from OpenAQ.")
 st.sidebar.info("Data: OpenAQ v3 API (Clarity Node-S)\nUpdated every 10–30 minutes.")
@@ -99,7 +88,6 @@ col1, col2 = st.columns([1, 2])
 with col1:
     st.metric("PM2.5", f"{pm25} µg/m³")
     st.markdown(f"**{status}**")
-    st.info(health_advice[status])
     st.caption(f"Location: {location}\nUpdated: {updated_display}")
 
 with col2:
