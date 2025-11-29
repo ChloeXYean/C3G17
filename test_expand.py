@@ -3,73 +3,123 @@ import requests
 import folium
 from streamlit_folium import st_folium
 
-st.set_page_config(page_title="Interactive PM2.5 Map", layout="wide")
-st.title("Interactive PM2.5 Air Quality Map & Health Risk")
-API_KEY = "dc213ab59e72d5a2ad42b90957e9e531117bf633a774b6157751bae99dce8af6" 
-API_URL = "https://api.openaq.org/v3/locations"
+API_KEY = "dc213ab59e72d5a2ad42b90957e9e531117bf633a774b6157751bae99dce8af6"
+BASE_URL = "https://api.openaq.org/v3"
+
+headers = {"X-API-Key": API_KEY}
 
 
-# ------------------- Helper functions -------------------    
+# -----------------------------------------------------------
+# Fetch Country List
+# -----------------------------------------------------------
+def fetch_countries():
+    try:
+        url = f"{BASE_URL}/countries"
+        r = requests.get(url, headers=headers)
+        data = r.json()
 
-data = requests.get(API_URL, params=params, timeout=10).json()
-sensors = []
-for loc in data.get("results", []):
-    coords = loc.get("coordinates")
-    latest = loc.get("latest", {})
-    if coords and latest:
-        sensors.append({
-            "name": loc["name"],
-            "pm25": round(latest.get("value", 0), 1),
-            "lat": coords["latitude"],
-            "lon": coords["longitude"],
-            "updated": latest.get("date", {}).get("utc", "")[:16].replace("T", " ")
-        })
+        if "results" not in data:
+            return []
 
-def health_risk(pm25):
-    if pm25 <= 12: return "Good", "green", "Safe for outdoor activity"
-    if pm25 <= 35: return "Moderate", "yellow", "Sensitive groups reduce prolonged outdoor activity"
-    if pm25 <= 55: return "Unhealthy for Sensitive Groups", "orange", "Children/elderly limit outdoor"
-    if pm25 <= 150: return "Unhealthy", "red", "Everyone limit outdoor activity, wear mask"
-    return "Very Unhealthy", "purple", "Stay indoors, use air purifier"
+        countries = {c["code"]: c["name"] for c in data["results"]}
+        return countries
 
-# ------------------- City Selection -------------------
-city_list = ["Kuala Lumpur", "Petaling Jaya", "Shah Alam"]  # can expand with known cities
-city = st.selectbox("Select a city:", city_list)
+    except Exception as e:
+        st.error(f"Country API Error: {e}")
+        return []
 
-sensors = fetch_sensors(city)
-if not sensors:
-    st.warning("No real-time sensors found. Using demo data.")
-    sensors = [
-        {"name": "KLCC", "pm25": 28.5, "lat": 3.1564, "lon": 101.7098, "updated": "2025-11-29 12:00"},
-        {"name": "Bangsar", "pm25": 42.1, "lat": 3.1300, "lon": 101.6700, "updated": "2025-11-29 11:55"},
-    ]
 
-# ------------------- Map -------------------
-# Center map on average coordinates
-avg_lat = sum(s["lat"] for s in sensors) / len(sensors)
-avg_lon = sum(s["lon"] for s in sensors) / len(sensors)
-m = folium.Map(location=[avg_lat, avg_lon], zoom_start=12, tiles="CartoDB positron")
+# -----------------------------------------------------------
+# Fetch Locations (Sensors) for country
+# -----------------------------------------------------------
+def fetch_locations(country_code):
+    try:
+        url = f"{BASE_URL}/locations?country={country_code}"
+        r = requests.get(url, headers=headers)
+        data = r.json()
 
-for s in sensors:
-    risk, color, advice = health_risk(s["pm25"])
-    folium.CircleMarker(
-        [s["lat"], s["lon"]],
-        radius=10,
-        color="black",
-        weight=2,
-        fillColor=color,
-        fillOpacity=0.8,
-        tooltip=f"{s['name']}: {s['pm25']} µg/m³ → {risk}",
-        popup=folium.Popup(
-            f"<b>{s['name']}</b><br>PM2.5: {s['pm25']} µg/m³<br>Health: {risk}<br>Advice: {advice}<br>Updated: {s['updated']}",
-            max_width=300
-        )
-    ).add_to(m)
+        if "results" not in data:
+            return []
 
-# Render map
-st_folium(m, width=1000, height=600)
+        return data["results"]
 
-# ------------------- Selected Sensor Info -------------------
-st.markdown("### Sensor Details")
-for s in sensors:
-    st.write(f"**{s['name']}** — PM2.5: {s['pm25']} µg/m³ — Health: {health_risk(s['pm25'])[0]} — Updated: {s['updated']}")
+    except Exception as e:
+        st.error(f"Location API Error: {e}")
+        return []
+
+
+# -----------------------------------------------------------
+# Fetch latest PM25 measurement
+# -----------------------------------------------------------
+def get_latest_pm25(location_id):
+    try:
+        url = f"{BASE_URL}/measurements?location_id={location_id}&parameter=pm25&limit=1"
+        r = requests.get(url, headers=headers)
+        data = r.json()
+
+        if "results" not in data or len(data["results"]) == 0:
+            return None
+        
+        rec = data["results"][0]
+
+        return {
+            "pm25": rec.get("value"),
+            "lat": rec["coordinates"]["latitude"],
+            "lon": rec["coordinates"]["longitude"],
+            "updated": rec["date"]["local"],
+        }
+
+    except Exception as e:
+        st.error(f"PM2.5 Error: {e}")
+        return None
+
+
+# -----------------------------------------------------------
+# STREAMLIT UI
+# -----------------------------------------------------------
+st.title("🌍 Real-time Air Quality (OpenAQ API v3)")
+st.write("Live country → location → PM2.5 dashboard")
+
+# 1️⃣ Load countries
+st.subheader("Step 1: Choose Country")
+countries = fetch_countries()
+
+if not countries:
+    st.error("No countries found!")
+    st.stop()
+
+selected_country = st.selectbox("Country", list(countries.keys()), format_func=lambda c: countries[c])
+
+# 2️⃣ Load sensors for selected country
+st.subheader("Step 2: Choose Monitoring Location")
+locations = fetch_locations(selected_country)
+
+if not locations:
+    st.warning("No sensors available for this country.")
+    st.stop()
+
+loc_dict = {loc["id"]: loc["name"] for loc in locations}
+selected_location_id = st.selectbox("Location", list(loc_dict.keys()), format_func=lambda i: loc_dict[i])
+
+# 3️⃣ Get PM25
+st.subheader("Step 3: Latest PM2.5 Reading")
+pm25_data = get_latest_pm25(selected_location_id)
+
+if pm25_data is None:
+    st.warning("No PM2.5 data available for this location.")
+    st.stop()
+
+st.metric("PM2.5", f"{pm25_data['pm25']} µg/m³")
+st.write(f"Updated: {pm25_data['updated']}")
+
+# 4️⃣ Map
+st.subheader("Map Visualization")
+
+m = folium.Map(location=[pm25_data["lat"], pm25_data["lon"]], zoom_start=13)
+
+folium.Marker(
+    [pm25_data["lat"], pm25_data["lon"]],
+    popup=f"PM2.5: {pm25_data['pm25']}"
+).add_to(m)
+
+st_folium(m, height=400)
