@@ -196,9 +196,11 @@ with col2:
     ).add_to(m)
     st_folium(m, width=700, height=400)
 
-# ==================== WEATHER TABLE (EXACTLY LIKE app.py) ====================
+# ==================== WEATHER TABLE (UPDATED) ====================
 st.markdown("### Weather Snapshot")
-st.table({
+
+# 1. Create a Pandas DataFrame instead of a simple dictionary
+weather_df = pd.DataFrame({
     "Parameter": ["Description", "Temperature (°C)", "Humidity (%)", "Wind (m/s)", "Rain (mm)"],
     "Value": [
         weather['desc'],
@@ -208,6 +210,9 @@ st.table({
         f"{weather['rain']}"
     ]
 })
+
+# 2. Use st.dataframe with hide_index=True (Just like the history table)
+st.dataframe(weather_df, use_container_width=True, hide_index=True)
 
 # Weather impact explanation
 if explanation_text:
