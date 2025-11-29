@@ -1,51 +1,59 @@
+
 import streamlit as st
 import pandas as pd
-import joblib
 import folium
 from streamlit_folium import st_folium
-import numpy as np
 
-# Load the trained model
-model = joblib.load('linear_regression_model.joblib')
+st.title('Air Quality')
 
-st.title('Air Quality Prediction')
+@st.cache_data(ttl=3600)  # Cache data for 1 hour
+def get_latest_klcc_data():
+    try:
+        # Read the local CSV file
+        df = pd.read_csv('klcc_data.csv')
 
-@st.cache_data(ttl=10)
-def get_random_data():
-    o3 = np.random.uniform(0, 10)
-    so2 = np.random.uniform(0, 10)
-    no2 = np.random.uniform(0, 10)
-    return o3, so2, no2
+        # Convert datetime string to datetime objects to find the most recent
+        df['datetimeUtc'] = pd.to_datetime(df['datetimeUtc'])
 
-# Get the cached random data
-o3, so2, no2 = get_random_data()
+        # Sort by datetime to find the latest entry
+        latest_data = df.sort_values(by='datetimeUtc', ascending=False).iloc[0]
 
-st.sidebar.header('Randomly Generated Input')
-st.sidebar.write(f"O3: {o3:.2f}")
-st.sidebar.write(f"SO2: {so2:.2f}")
-st.sidebar.write(f"NO2: {no2:.2f}")
+        # Extract the required values
+        pm25 = latest_data['value']
+        lat = latest_data['latitude']
+        lon = latest_data['longitude']
+        location_name = latest_data['location_name']
+        unit = latest_data['unit']
 
+        return pm25, lat, lon, location_name, unit
+    except FileNotFoundError:
+        st.error("The file 'klcc_data.csv' was not found.")
+        st.stop()
+    except Exception as e:
+        st.error(f"Could not read or process klcc_data.csv: {e}")
+        st.stop()
 
-# Predict PM2.5
-# The model was trained with columns 'feature1', 'feature2', 'feature3'.
-# We must use these column names for the prediction DataFrame.
-input_data = pd.DataFrame([[o3, so2, no2]], columns=['feature1', 'feature2', 'feature3'])
-prediction = model.predict(input_data)[0]
+# Get the latest data from the CSV
+pm25, lat, lon, location_name, unit = get_latest_klcc_data()
 
-st.header(f'Predicted PM2.5: {prediction:.2f}')
+st.sidebar.header(f'Latest Data from {location_name}')
+st.sidebar.write(f"PM2.5: {pm25:.2f} {unit}")
+
+st.header(f'Latest PM2.5 at {location_name}: {pm25:.2f} {unit}')
 
 st.subheader('Location Map')
-# Create a map centered around Kuala Lumpur
-m = folium.Map(location=[3.1390, 101.6869], zoom_start=11) # Centered on Kuala Lumpur
 
-# Add a marker for the predicted location
+# Create a map centered around the location from the data
+m = folium.Map(location=[lat, lon], zoom_start=15)
+
+# Add a marker for the location
 folium.Marker(
-    [3.1390, 101.6869],
-    popup=f"Predicted PM2.5: {prediction:.2f}",
-    tooltip='Kuala Lumpur'
+    [lat, lon],
+    popup=f"PM2.5: {pm25:.2f}",
+    tooltip=location_name
 ).add_to(m)
 
 # Display the map in the Streamlit app
 st_folium(m, width=725)
 
-st.write("The map is now centered on Kuala Lumpur, Malaysia.")
+st.write(f"Displaying the latest recorded PM2.5 value from your local klcc_data.csv file.")
