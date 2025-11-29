@@ -4,6 +4,7 @@ This project is a real-time air quality monitoring application built using Pytho
 Future development towards the global.
 
 **Key Features**
+
 _Real-Time Data Visualization_: Displays the current Air Quality Index (AQI) and pollutant concentrations.
 
 _Weather Snapshoot_: Allows users to select different air quality monitoring stations.
